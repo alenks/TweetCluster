@@ -5,6 +5,8 @@ import org.apache.spark.ml.linalg.Vector
 import org.apache.spark.ml.feature.Word2VecModel
 import org.apache.spark.ml.clustering.KMeans
 import org.apache.spark.ml.evaluation.ClusteringEvaluator
+import org.apache.spark.sql.functions.{collect_list, explode, flatten, monotonically_increasing_id}
+import org.apache.spark.sql.functions._
 import org.sparkproject.dmg.pmml.True
 
 object Main {
@@ -39,6 +41,7 @@ object Main {
 
     val result = model.transform(documentDF)
 //    result.show()
+
 //    result.collect().foreach(println)
 //    result.collect().foreach { case Row(raw: Seq[_], text: Seq[_], features: Vector) =>
 //    println(s"Text: [${text.mkString(", ")}] => \nVector: $features\n") }
@@ -50,9 +53,35 @@ object Main {
     val kmmodel = kmeans.fit(result)
     println("Cluster centers:")
     kmmodel.clusterCenters.foreach(println)
+
     val predictDf = kmmodel.transform(result)
     predictDf.show()
-    predictDf.groupBy("cluster").count().show(100)
+//    predictDf.groupBy("cluster").count().show(100)
+    val agg_cluster = predictDf.groupBy("cluster")
+      .agg(collect_list("terms").name("terms"))
+
+    val agg_flat_cluster = agg_cluster.select($"cluster", flatten($"terms") alias("terms"))
+    agg_flat_cluster.collect().foreach(println)
+    val agg_explode_cluster = agg_flat_cluster.select($"cluster", explode(agg_flat_cluster("terms")) alias("terms"))
+    val cluster_wc = agg_explode_cluster.groupBy("cluster", "terms")
+      .count()
+      .sort($"cluster", $"count".desc)
+      .filter("terms != ''")
+
+    println("Most frequent words of each cluster:")
+    cluster_wc.collect().foreach(println)
+    val dataWithIndex = cluster_wc.withColumn("idx", monotonically_increasing_id())
+//    dataWithIndex.collect().foreach(println)
+    val minIdx = dataWithIndex
+      .groupBy($"cluster")
+      .agg(min($"idx"))
+      .toDF("r_cluster", "min_idx")
+    val cluster_freqw = dataWithIndex.join(
+      minIdx,
+      ($"r_cluster" === $"cluster") && ($"idx" <= $"min_idx")
+    ).select($"cluster", $"terms")
+    cluster_freqw.collect().foreach(println)
+
     val evaluator = new ClusteringEvaluator()
       .setFeaturesCol("result")
       .setPredictionCol("cluster")
