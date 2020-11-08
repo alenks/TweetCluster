@@ -19,7 +19,7 @@ object Main {
       .getOrCreate()
     val sc = SparkContext.getOrCreate()
     import spark.implicits._
-
+//    val inp = spark.read.csv(args(0))
     val inf = sc.textFile(args(0))
     val rawWords = inf.map( x => x.split(" ") ).toDF("text")
     val stopwordList = sc.textFile(args(1)).collect()
@@ -55,7 +55,7 @@ object Main {
     kmmodel.clusterCenters.foreach(println)
 
     val predictDf = kmmodel.transform(result)
-    predictDf.show()
+    //predictDf.show()
 //    predictDf.groupBy("cluster").count().show(100)
     val agg_cluster = predictDf.groupBy("cluster")
       .agg(collect_list("terms").name("terms"))
@@ -80,20 +80,12 @@ object Main {
 //    minIdx.collect().foreach(println)
 //      minIdx.show()
 
-    /*val new_minIdx = minIdx.select($"r_cluster".alias("cluster"), $"min_idx".alias("idx"))
-
-    val cluster_freqw = dataWithIndex.join(
-      minIdx,
-      ($"cluster" === $"r_cluster") && ($"idx" <= $"min_idx")
-    ).select($"cluster", $"terms").sort($"cluster")
-
-    cluster_freqw.collect().foreach(println)*/
 
     val cluster_freqw = dataWithIndex.join(minIdx)
       .where( $"idx" === $"min_idx" )
       .select($"cluster", $"terms").sort($"cluster")
     //to print
-    //cluster_freqw.collect().foreach(println)
+    cluster_freqw.collect().foreach(println)
 
 
 //    val cluster_fw = dataWithIndex.join(new_minIdx,Seq("cluster", "idx")).sort("cluster")
