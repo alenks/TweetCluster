@@ -35,7 +35,7 @@ object Main {
     val word2Vec = new Word2Vec()
       .setInputCol("terms")
       .setOutputCol("result")
-      .setVectorSize(3)
+      .setVectorSize(5)
       .setMinCount(0)
     val model = word2Vec.fit(documentDF)
 
@@ -61,7 +61,7 @@ object Main {
       .agg(collect_list("terms").name("terms"))
 
     val agg_flat_cluster = agg_cluster.select($"cluster", flatten($"terms") alias("terms"))
-    agg_flat_cluster.collect().foreach(println)
+//    agg_flat_cluster.collect().foreach(println)
     val agg_explode_cluster = agg_flat_cluster.select($"cluster", explode(agg_flat_cluster("terms")) alias("terms"))
     val cluster_wc = agg_explode_cluster.groupBy("cluster", "terms")
       .count()
@@ -69,18 +69,35 @@ object Main {
       .filter("terms != ''")
 
     println("Most frequent words of each cluster:")
-    cluster_wc.collect().foreach(println)
+//    cluster_wc.collect().foreach(println)
     val dataWithIndex = cluster_wc.withColumn("idx", monotonically_increasing_id())
 //    dataWithIndex.collect().foreach(println)
     val minIdx = dataWithIndex
       .groupBy($"cluster")
       .agg(min($"idx"))
+      .sort($"cluster")
       .toDF("r_cluster", "min_idx")
+//    minIdx.collect().foreach(println)
+//      minIdx.show()
+
+    /*val new_minIdx = minIdx.select($"r_cluster".alias("cluster"), $"min_idx".alias("idx"))
+
     val cluster_freqw = dataWithIndex.join(
       minIdx,
-      ($"r_cluster" === $"cluster") && ($"idx" <= $"min_idx")
-    ).select($"cluster", $"terms")
-    cluster_freqw.collect().foreach(println)
+      ($"cluster" === $"r_cluster") && ($"idx" <= $"min_idx")
+    ).select($"cluster", $"terms").sort($"cluster")
+
+    cluster_freqw.collect().foreach(println)*/
+
+    val cluster_freqw = dataWithIndex.join(minIdx)
+      .where( $"idx" === $"min_idx" )
+      .select($"cluster", $"terms").sort($"cluster")
+    //to print
+    //cluster_freqw.collect().foreach(println)
+
+
+//    val cluster_fw = dataWithIndex.join(new_minIdx,Seq("cluster", "idx")).sort("cluster")
+//    cluster_fw.collect().foreach(println)
 
     val evaluator = new ClusteringEvaluator()
       .setFeaturesCol("result")
